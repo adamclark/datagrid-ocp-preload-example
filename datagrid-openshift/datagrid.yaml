@@ -1,0 +1,16 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: datagrid
+spec:
+  security:
+    endpointAuthentication: false
+    endpointEncryption:
+      type: None
+  expose:
+    type: Route
+  service:
+    container:
+      ephemeralStorage: true
+    type: DataGrid
+  replicas: 3
