@@ -1,7 +1,9 @@
 # Overview
-This is a simple example application to demonstrate Data Grid (Infinispan) cache preloading using an init container.
+This is a simple example application, deployed to OpenShift, to demonstrate Data Grid (Infinispan) cache preloading using an init container.
 
 It is designed for a Data Grid client application with multiple replicas. The cache should only be preloaded once and each replica should not become available without the cache already being preloaded. This is acheived using a combination of an init container and a `StatefulSet`.
+
+Another advantage of this approach is that the init container can have different resources configured (cpu/memory request/limit) compared to the main application container. This is useful when preloading benefits from higher resources compared to the application running in steady state.
 
 This example uses Quarkus but the same approach could be used for any type of application.
 
