@@ -14,3 +14,6 @@ spec:
       ephemeralStorage: true
     type: DataGrid
   replicas: 3
+  configMapName: datagrid-custom-config
+  configListener:
+    enabled: false

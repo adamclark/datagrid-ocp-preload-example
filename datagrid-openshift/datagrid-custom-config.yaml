@@ -1,0 +1,9 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: datagrid-custom-config
+data:
+  infinispan-config.xml: |
+    <infinispan>
+      <distributed-cache name="noCrCache" mode="SYNC"/>
+    </infinispan>
