@@ -21,6 +21,7 @@ This example uses Quarkus but the same approach could be used for any type of ap
 # Create the Data Grid cluster and caches in OpenShift
 ```
 cd datagrid-openshift
+oc apply -f datagrid-custom-config.yaml
 oc apply -f datagrid.yaml
 oc apply -f greetings-cache.yaml
 oc apply -f preload-control-cache.yaml

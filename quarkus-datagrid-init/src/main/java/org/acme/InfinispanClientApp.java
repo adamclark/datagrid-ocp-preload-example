@@ -7,42 +7,75 @@ import javax.inject.Inject;
 import io.quarkus.runtime.Quarkus;
 
 import io.quarkus.infinispan.client.Remote;
-import io.quarkus.logging.Log;
+
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.infinispan.client.hotrod.RemoteCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.quarkus.runtime.StartupEvent;
 
 @ApplicationScoped
 public class InfinispanClientApp {
 
-    @Inject
-    @Remote("preload-control-cache")
-    RemoteCache<String, Boolean> preloadControlCache;
+    private static final Logger log = LoggerFactory.getLogger(InfinispanClientApp.class);
 
     @Inject
-    @Remote("greetings-cache")
-    RemoteCache<String, String> greetingsCache;
+    @Remote("preload-control-cache")
+    RemoteCache<String, String> preloadControlCache;
+
+    @ConfigProperty(name="hostname")
+    String hostname;
+
+    enum LoadStatus {
+        LOADING("LOADING"), LOADED("LOADED");
+        
+        public final String value;
+
+        private LoadStatus(String value) {
+            this.value = value;
+        }
+    }
+
+    final String LOAD_STATUS_CACHE_KEY = "LOAD_STATUS";
+    final String LOADER_HOSTNAME_CACHE_KEY = "LOADER_HOSTNAME";
 
     void onStart(@Observes StartupEvent ev) {
 
-        Log.info("Checking if cache is already preloaded...");
-        Boolean loaded = preloadControlCache.get("loaded");
+        log.info("Checking cache load status");
+        String loadStatus = preloadControlCache.get(LOAD_STATUS_CACHE_KEY);
+        String loaderHostname = (String) preloadControlCache.get(LOADER_HOSTNAME_CACHE_KEY);
 
-        if(loaded == null || !loaded) {
-            Log.info("Preloading cache...");
-            greetingsCache.put("hello1", "Hello1 World, Infinispan is up!");
-            greetingsCache.put("hello2", "Hello2 World, Infinispan is up!");
-            greetingsCache.put("hello3", "Hello3 World, Infinispan is up!");
+        if(loadStatus == null) {
+            // assign this instance to loading
+            log.info("Assigning loading to this instance ({})", hostname);
+            preloadControlCache.put(LOAD_STATUS_CACHE_KEY, LoadStatus.LOADING.value);
+            preloadControlCache.put(LOADER_HOSTNAME_CACHE_KEY, hostname);
 
-            Log.info("Sleeping to simulate cache preloading...");
-            try {
-                Thread.sleep(30000);
-            } catch(InterruptedException ex) {}
-
-            Log.info("Setting preloaded to true...");
-            preloadControlCache.put("loaded", true);
+            loadStatus = LoadStatus.LOADING.value;
         }
 
-        Quarkus.asyncExit();
+        int exitCode = 1; // default to error
+
+        if(loadStatus.equals(LoadStatus.LOADED.value)) {
+            // exit cleanly so app can start
+            log.info("Cache already loaded so proceeding with normal app startup");
+            exitCode = 0;
+        } else {
+            // Reload the hostname to check this instance got the lock
+            loaderHostname = (String) preloadControlCache.get(LOADER_HOSTNAME_CACHE_KEY);
+
+            if(loaderHostname.equals(hostname)) {
+                // exit cleanly so loading can continue in the app
+                log.info("Loading will proceed with this instance ({})", hostname);
+                exitCode = 0;
+            } else {
+                // exit with error so pod restarts (another instance is loading cache)
+                log.info("Loading already started in a different instance ({})", loaderHostname);
+                exitCode = 1;
+            }
+        }
+
+        Quarkus.asyncExit(exitCode);
     }
 }
