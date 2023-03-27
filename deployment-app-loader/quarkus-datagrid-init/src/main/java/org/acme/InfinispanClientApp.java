@@ -15,6 +15,10 @@ import org.slf4j.LoggerFactory;
 
 import io.quarkus.runtime.StartupEvent;
 
+import static org.acme.cache.CacheConstants.LOAD_STATUS_CACHE_KEY;
+import static org.acme.cache.CacheConstants.LOADER_HOSTNAME_CACHE_KEY;
+import org.acme.cache.CacheConstants.LoadStatus;
+
 @ApplicationScoped
 public class InfinispanClientApp {
 
@@ -27,25 +31,13 @@ public class InfinispanClientApp {
     @ConfigProperty(name="hostname")
     String hostname;
 
-    enum LoadStatus {
-        LOADING("LOADING"), LOADED("LOADED");
-        
-        public final String value;
-
-        private LoadStatus(String value) {
-            this.value = value;
-        }
-    }
-
-    final String LOAD_STATUS_CACHE_KEY = "LOAD_STATUS";
-    final String LOADER_HOSTNAME_CACHE_KEY = "LOADER_HOSTNAME";
-
     void onStart(@Observes StartupEvent ev) {
 
         log.info("Checking cache load status");
         String loadStatus = preloadControlCache.get(LOAD_STATUS_CACHE_KEY);
         String loaderHostname = (String) preloadControlCache.get(LOADER_HOSTNAME_CACHE_KEY);
 
+        // If the cache isn't loaded and no other instance is loading, assign loading to this instance
         if(loadStatus == null) {
             // assign this instance to loading
             log.info("Assigning loading to this instance ({})", hostname);
@@ -55,22 +47,25 @@ public class InfinispanClientApp {
             loadStatus = LoadStatus.LOADING.value;
         }
 
+        // Now work out if this instance should start (cache is loaded or this instance will load it)
+        // or fail and restart (another instance is loading the cache so restart until it's loaded)
         int exitCode = 1; // default to error
 
         if(loadStatus.equals(LoadStatus.LOADED.value)) {
-            // exit cleanly so app can start
+            // The cache is loaded, exit cleanly so app can start
             log.info("Cache already loaded so proceeding with normal app startup");
             exitCode = 0;
         } else {
-            // Reload the hostname to check this instance got the lock
+            // Reload the hostname to check this instance got the assignment
             loaderHostname = (String) preloadControlCache.get(LOADER_HOSTNAME_CACHE_KEY);
 
             if(loaderHostname.equals(hostname)) {
-                // exit cleanly so loading can continue in the app
+                // This instance is assigned loading, exit cleanly so loading can continue in the app
                 log.info("Loading will proceed with this instance ({})", hostname);
                 exitCode = 0;
             } else {
-                // exit with error so pod restarts (another instance is loading cache)
+                // Another instance is loading, exit with error so pod restarts and rechecks the cache is loaded
+                // Note: An alternative approch would be to loop in this method until the cache is loaded
                 log.info("Loading already started in a different instance ({})", loaderHostname);
                 exitCode = 1;
             }
